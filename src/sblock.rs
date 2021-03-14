@@ -1,3 +1,8 @@
+use alloc::sync::Arc;
+
+use super::cache::get_block_cache;
+use super::device::BlockDevice;
+
 const FEFS_MAGIC: [u8; 4] = [0x66, 0x65, 0x66, 0x73];
 
 #[derive(Debug, Clone, Copy)]
@@ -16,10 +21,18 @@ impl SuperBlock {
     }
 
     pub fn fat(&self) -> usize {
-        core::mem::size_of::<SuperBlock>()
+        512
     } 
 
     pub fn offset(&self, cluster: usize) -> usize {
-        (self.sector_per_fat + cluster - self.root_cluster) * self.byte_per_sector
+        (self.sector_per_fat + (cluster - self.root_cluster) * self.sector_per_cluster)
+            * self.byte_per_sector
     }
+}
+
+pub fn get_sblock(device: &Arc<dyn BlockDevice>) -> SuperBlock {
+    get_block_cache(0, &Arc::clone(&device)).lock().read(0, |sblock: &SuperBlock| {
+        assert!(sblock.is_valid(), "Error, Not FEFS");
+        sblock.clone()
+    })
 }

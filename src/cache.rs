@@ -53,8 +53,8 @@ impl BlockCache {
         f(self.get_ref(offset))
     }
 
-    pub fn modify<T, V>(&self, offset: usize, f: impl FnOnce(&T) -> V) -> V {
-        f(self.get_ref(offset))
+    pub fn modify<T, V>(&mut self, offset: usize, f: impl FnOnce(&mut T) -> V) -> V {
+        f(self.get_mut(offset))
     }
 
     pub fn sync(&mut self) {
@@ -87,7 +87,7 @@ impl BlockCacheManager {
     pub fn get_block_cache(
         &mut self,
         addr: usize,
-        device: Arc<dyn BlockDevice>
+        device: &Arc<dyn BlockDevice>
     ) -> Arc<Mutex<BlockCache>> {
         match self.queue
                 .iter()
@@ -105,7 +105,7 @@ impl BlockCacheManager {
                 }
 
                 let cache = Arc::new(Mutex::new(
-                    BlockCache::new(addr, Arc::clone(&device))
+                    BlockCache::new(addr, Arc::clone(device))
                 ));
                 self.queue.push_back((addr, Arc::clone(&cache)));
                 cache
@@ -122,7 +122,7 @@ lazy_static! {
 
 pub fn get_block_cache(
     addr: usize,
-    device: Arc<dyn BlockDevice>
+    device: &Arc<dyn BlockDevice>
 ) -> Arc<Mutex<BlockCache>> {
     BLOCK_CACHE_MANAGER.lock().get_block_cache(addr, device)
 }
