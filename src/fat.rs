@@ -32,7 +32,7 @@ impl FATIterator {
             if cluster != 0 { break; }
         }
 
-        let end = sblock.root_cluster * sblock.sector_per_cluster * BLOCK_SIZE / 4;
+        let end = (sblock.root_cluster * sblock.sector_per_cluster * BLOCK_SIZE - fat_addr) / 4;
 
         Self {
             current: cluster,
@@ -54,7 +54,7 @@ impl Iterator for FATIterator {
             for loc in (0..BLOCK_SIZE).step_by(4) {
                 let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
-                    cluster = offset / 4 + loc / 4;
+                    cluster = (offset + loc) / 4;
                     break;
                 };
             }
@@ -70,8 +70,9 @@ impl Iterator for FATIterator {
     }
 }
 
-pub struct FAT {
+struct FAT {
     iterator: FATIterator,
+    sblock: SuperBlock,
     recycled: Vec<usize>,
 }
 
@@ -80,44 +81,93 @@ impl FAT {
         let sblock = get_sblock(device);
         let fat = Self {
             iterator: FATIterator::new(&sblock, device),
+            sblock,
             recycled: Vec::new(),
         };
         fat
     }
 
-    fn alloc(&mut self) -> usize {
-        if let Some(cluster) = self.recycled.pop() {
-            return  cluster;
-        }
-
-        let cluster = match self.iterator.next() {
-            Some(cluster) => cluster,
-            None => panic!("no fat can be allocated"),
+    fn free_clusters(&mut self, size: usize) -> Vec<usize> {
+        let spc = self.sblock.sector_per_cluster;
+        let num_sector = if size % BLOCK_SIZE == 0 {
+            size / BLOCK_SIZE
+        } else {
+            size / BLOCK_SIZE + 1
         };
 
-        let base_addr = self.iterator.fat_addr + cluster * 4;
-        let addr = base_addr / BLOCK_SIZE;
-        let offset = (base_addr % BLOCK_SIZE) / 4; 
+        let num_cluster = if num_sector % spc == 0 {
+            num_sector / spc
+        } else {
+            num_sector / spc + 1
+        };
 
-        get_block_cache(addr , &self.iterator.device)
-            .lock().modify(offset, |cluster: &mut u32| {
-            *cluster = 0x0FFFFFFF;
+        let mut clusters = Vec::new();
+        for _ in 0..num_cluster {
+            clusters.push(self.free_cluster());
+        }
+        clusters
+    }
+
+    fn free_cluster(&mut self) -> usize {
+        match self.iterator.next() {
+            Some(cluster) => cluster,
+            None => panic!("no fat can be allocated"),
+        }
+    }
+
+    fn allocated_clusters(&self, cluster: usize) -> Vec<usize> {
+        let mut cluster = cluster;
+        let mut clusters = Vec::new();
+        clusters.push(cluster);
+
+        loop {
+            cluster = self.read(cluster);
+            if cluster == 0x0FFFFFFF {
+                break;
+            } else {
+                clusters.push(cluster);
+            }
+        }
+
+        clusters
+    }
+
+    fn read(&self, cluster: usize) -> usize {
+        let addr = self.iterator.fat_addr + cluster * 4;
+
+        get_block_cache(addr, &self.iterator.device)
+            .lock().read(0, |cluster: &u32| {
+            *cluster
+        }) as usize
+    }
+
+    fn write(&mut self, cluster: usize, value: usize) {
+        let addr = self.iterator.fat_addr + cluster * 4;
+
+        get_block_cache(addr, &self.iterator.device)
+            .lock().modify(0, |cluster: &mut u32| {
+            *cluster = value as u32;
         });
+    }
 
-        cluster
+    fn alloc(&mut self, size: usize) -> usize {
+        let clusters = self.free_clusters(size);
+        for idx in (0..clusters.len()).step_by(2) {
+            if idx == clusters.len() - 1 {
+                self.write(clusters[idx], 0x0FFFFFFF);
+            } else {
+                self.write(clusters[idx], clusters[idx + 1]);
+            }
+        }
+        clusters[0]
     }
 
     fn dealloc(&mut self, cluster: usize) {
-        let base_addr = self.iterator.fat_addr + cluster * 4;
-        let addr = base_addr / BLOCK_SIZE;
-        let offset = (base_addr % BLOCK_SIZE) / 4; 
-
-        get_block_cache(addr , &self.iterator.device)
-            .lock().modify(offset, |cluster: &mut u32| {
-            *cluster = 0x00000000;
-        });
-
-        self.recycled.push(cluster);
+        let mut clusters = self.allocated_clusters(cluster);
+        for &c in clusters.iter() {
+            self.write(c, 0x00000000);
+        }
+        self.recycled.append(&mut clusters);
     }
 }
 
@@ -132,21 +182,39 @@ impl FATManager {
         }
     }
 
-    pub fn init(&mut self, device: &Arc<dyn BlockDevice>) {
-        self.inner.push(FAT::new(device));
+    fn inner(&mut self) -> FAT {
+        match self.inner.pop() {
+            Some(fat) => fat,
+            None => panic!("not init fat manager"),
+        }
     }
 
-    pub fn alloc(&mut self) -> usize {
-        let mut fat = self.inner.pop().unwrap();
-        let cluster = fat.alloc();
+    fn push(&mut self, fat: FAT) {
         self.inner.push(fat);
+    }
+
+    fn init(&mut self, device: &Arc<dyn BlockDevice>) {
+        self.push(FAT::new(device));
+    }
+
+    fn read(&mut self, cluster: usize) -> Vec<usize> {
+        let fat = self.inner();
+        let clusters = fat.allocated_clusters(cluster);
+        self.push(fat);
+        clusters
+    }
+
+    fn alloc(&mut self, size: usize) -> usize {
+        let mut fat = self.inner();
+        let cluster = fat.alloc(size);
+        self.push(fat);
         cluster
     }
 
-    pub fn dealloc(&mut self, cluster: usize) {
-        let mut fat = self.inner.pop().unwrap();
+    fn dealloc(&mut self, cluster: usize) {
+        let mut fat = self.inner();
         fat.dealloc(cluster);
-        self.inner.push(fat);
+        self.push(fat);
     }
 }
 
@@ -154,3 +222,18 @@ lazy_static! {
     pub static ref FAT_MANAGER: Mutex<FATManager> = Mutex::new(FATManager::new());
 }
 
+pub fn init_fat_manager(device: &Arc<dyn BlockDevice>) {
+    FAT_MANAGER.lock().init(device)
+}
+
+pub fn alloc_clusters(size: usize) -> usize {
+    FAT_MANAGER.lock().alloc(size)
+}
+
+pub fn dealloc_clusters(cluster: usize) {
+    FAT_MANAGER.lock().dealloc(cluster)
+}
+
+pub fn read_clusters(cluster: usize) -> Vec<usize> {
+    FAT_MANAGER.lock().read(cluster)
+}
