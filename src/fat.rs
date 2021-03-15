@@ -1,9 +1,9 @@
 use alloc::sync::Arc;
+use alloc::vec::Vec;
 use spin::Mutex;
 use lazy_static::lazy_static;
 
 use super::BLOCK_SIZE;
-
 use super::cache::get_block_cache;
 use super::sblock::get_sblock;
 use super::sblock::SuperBlock;
@@ -26,8 +26,10 @@ impl FATIterator {
                 let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
                     cluster = offset / 4 + loc / 4;
+                    break;
                 };
             }
+            if cluster != 0 { break; }
         }
 
         let end = sblock.root_cluster * sblock.sector_per_cluster * BLOCK_SIZE / 4;
@@ -53,8 +55,10 @@ impl Iterator for FATIterator {
                 let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
                     cluster = offset / 4 + loc / 4;
+                    break;;
                 };
             }
+            if cluster != 0 { break; }
         }
 
         if cluster > self.end {
@@ -68,24 +72,28 @@ impl Iterator for FATIterator {
 
 pub struct FAT {
     device: Arc<dyn BlockDevice>,
-    sblock: SuperBlock,
     addr: usize,
-    iterator: FATIterator
+    iterator: FATIterator,
+    recycled: Vec<usize>,
 }
 
 impl FAT {
-    fn new(device: &Arc<dyn BlockDevice>) -> Mutex<Self> {
+    fn new(device: &Arc<dyn BlockDevice>) -> Self {
         let sblock = get_sblock(device);
         let fat = Self {
             device: Arc::clone(device),
-            sblock,
             addr: sblock.fat(),
             iterator: FATIterator::new(&sblock, device),
+            recycled: Vec::new(),
         };
-        Mutex::new(fat)
+        fat
     }
 
     fn alloc(&mut self) -> usize {
+        if let Some(cluster) = self.recycled.pop() {
+            return  cluster;
+        }
+
         let cluster = match self.iterator.next() {
             Some(cluster) => cluster,
             None => panic!("no fat can be allocated"),
@@ -110,19 +118,41 @@ impl FAT {
         get_block_cache(addr , &self.device).lock().modify(offset, |cluster: &mut u32| {
             *cluster = 0x00000000;
         });
+
+        self.recycled.push(cluster);
     }
 }
 
-pub struct FATManager;
+pub struct FATManager {
+    inner: Vec<FAT>
+}
 
 impl FATManager {
     fn new() -> Self {
-        Self
+        Self {
+            inner: Vec::new()
+        }
+    }
+
+    pub fn init(&mut self, device: &Arc<dyn BlockDevice>) {
+        self.inner.push(FAT::new(device));
+    }
+
+    pub fn alloc(&mut self) -> usize {
+        let mut fat = self.inner.pop().unwrap();
+        let cluster = fat.alloc();
+        self.inner.push(fat);
+        cluster
+    }
+
+    pub fn dealloc(&mut self, cluster: usize) {
+        let mut fat = self.inner.pop().unwrap();
+        fat.dealloc(cluster);
+        self.inner.push(fat);
     }
 }
 
-
 lazy_static! {
-    pub static ref FATMANAGER: FATManager = FATManager::new();
+    pub static ref FAT_MANAGER: Mutex<FATManager> = Mutex::new(FATManager::new());
 }
 
