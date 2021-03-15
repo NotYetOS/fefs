@@ -48,14 +48,14 @@ impl Iterator for FATIterator {
 
     fn next(&mut self) -> Option<Self::Item> {
         let mut cluster = 0;
-        let base_addr = self.current * 4 + self.fat_addr;
+        let base_addr = self.fat_addr + self.current * 4;
         for offset in (0..).step_by(BLOCK_SIZE) {
             let cache = get_block_cache(base_addr + offset, &self.device);
             for loc in (0..BLOCK_SIZE).step_by(4) {
                 let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
                     cluster = offset / 4 + loc / 4;
-                    break;;
+                    break;
                 };
             }
             if cluster != 0 { break; }
@@ -71,8 +71,6 @@ impl Iterator for FATIterator {
 }
 
 pub struct FAT {
-    device: Arc<dyn BlockDevice>,
-    addr: usize,
     iterator: FATIterator,
     recycled: Vec<usize>,
 }
@@ -81,8 +79,6 @@ impl FAT {
     fn new(device: &Arc<dyn BlockDevice>) -> Self {
         let sblock = get_sblock(device);
         let fat = Self {
-            device: Arc::clone(device),
-            addr: sblock.fat(),
             iterator: FATIterator::new(&sblock, device),
             recycled: Vec::new(),
         };
@@ -99,11 +95,12 @@ impl FAT {
             None => panic!("no fat can be allocated"),
         };
 
-        let base_addr = self.addr + cluster * 4;
+        let base_addr = self.iterator.fat_addr + cluster * 4;
         let addr = base_addr / BLOCK_SIZE;
         let offset = (base_addr % BLOCK_SIZE) / 4; 
 
-        get_block_cache(addr , &self.device).lock().modify(offset, |cluster: &mut u32| {
+        get_block_cache(addr , &self.iterator.device)
+            .lock().modify(offset, |cluster: &mut u32| {
             *cluster = 0x0FFFFFFF;
         });
 
@@ -111,11 +108,12 @@ impl FAT {
     }
 
     fn dealloc(&mut self, cluster: usize) {
-        let base_addr = self.addr + cluster * 4;
+        let base_addr = self.iterator.fat_addr + cluster * 4;
         let addr = base_addr / BLOCK_SIZE;
         let offset = (base_addr % BLOCK_SIZE) / 4; 
 
-        get_block_cache(addr , &self.device).lock().modify(offset, |cluster: &mut u32| {
+        get_block_cache(addr , &self.iterator.device)
+            .lock().modify(offset, |cluster: &mut u32| {
             *cluster = 0x00000000;
         });
 
