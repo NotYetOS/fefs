@@ -1,9 +1,10 @@
 use alloc::sync::Arc;
 use spin::Mutex;
 
+use super::fat::read_clusters;
+use super::dir::DirEntry;
 use super::sblock::SuperBlock;
 use super::device::BlockDevice;
-use super::inode::Inode;
 use super::sblock::get_sblock;
 use super::fat::init_fat_manager;
 
@@ -21,7 +22,14 @@ impl FileSystem {
             device,
             sblock,
         };
-
         Arc::new(Mutex::new(fs))
+    }
+
+    pub fn root(&self) -> DirEntry {
+        DirEntry {
+            device: Arc::clone(&self.device),
+            clusters: read_clusters(self.sblock.root_cluster),
+            sblock: &self.sblock,
+        }
     }
 }
