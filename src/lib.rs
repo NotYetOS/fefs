@@ -10,6 +10,7 @@ pub mod cache;
 pub mod inode;
 pub mod dir;
 pub mod file;
+pub mod macros;
 
 pub const BLOCK_SIZE: usize = 512;
 

@@ -6,11 +6,16 @@ pub enum InodeType {
     NoneEntry = 0,
     DirEntry = 1,
     FileEntry = 2,
-    DeletedEntry = 0xE5,
+}
+
+impl Default for InodeType {
+    fn default() -> Self {
+        InodeType::NoneEntry
+    }
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct Inode {
     pub(crate) i_type: InodeType,
     pub(crate) i_name: [u8; 17],
@@ -31,35 +36,27 @@ pub struct Inode {
 }
 
 impl Inode {
-    pub fn is_dir(&self) -> bool {
+    pub(crate) fn is_dir(&self) -> bool {
         self.i_type == InodeType::DirEntry
     }
 
-    pub fn is_filr(&self) -> bool {
+    pub(crate) fn is_filr(&self) -> bool {
         self.i_type == InodeType::FileEntry
     }
 
-    pub fn is_valid(&self) -> bool {
-        !self.is_deleted() && !self.is_none()
+    pub(crate) fn is_valid(&self) -> bool {
+        !self.is_none()
     }
 
-    pub fn is_deleted(&self) -> bool {
-        self.i_type != InodeType::DeletedEntry
-    }
-
-    pub fn is_none(&self) -> bool {
+    pub(crate) fn is_none(&self) -> bool {
         self.i_type != InodeType::NoneEntry
     }
 
-    pub fn name(&self) -> String {
+    pub(crate) fn name(&self) -> String {
         core::str::from_utf8(&self.i_name).unwrap().into()
     }
 
-    pub fn cluster(&self) -> usize {
+    pub(crate) fn cluster(&self) -> usize {
         self.i_cluster as usize
-    }
-
-    pub fn pre_cluster(&self) -> usize {
-        self.i_pre_cluster as usize
     }
 }
