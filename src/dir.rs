@@ -1,9 +1,13 @@
-use alloc::{sync::Arc, vec::Vec};
 use alloc::string::String;
+use alloc::{
+    sync::Arc, 
+    vec::Vec
+};
 
 use super::fat::{
     alloc_clusters,
-    read_clusters
+    read_clusters,
+    increase_cluster,
 };
 use super::inode::{
     Inode,
@@ -15,7 +19,6 @@ use super::cache::get_block_cache;
 use super::sblock::SuperBlock;
 use super::device::BlockDevice;
 use super::file::FileEntry;
-
 
 macro_rules! iter_sector {
     ($self: ident, $f: expr) => {{
@@ -35,6 +38,7 @@ macro_rules! iter_sector {
         sector_addr
     }};
 }
+
 pub enum DirError {
     NotFindDir,
     NotFindFile,
@@ -70,24 +74,31 @@ impl<'a> DirEntry<'a> {
         }
     }
 
-    pub fn mkdir(&self, dir: &str) -> Result<DirEntry, DirError> {
+    pub fn mkdir(&mut self, dir: &str) -> Result<DirEntry, DirError> {
         if is_illegal(dir) { return Err(DirError::IllegalChar) };
-        let cluster = alloc_clusters(BLOCK_SIZE);
+        let clusters = alloc_clusters(BLOCK_SIZE);
 
-        let sector_addr = iter_sector!(self, |inode: &Inode| -> bool {
+        let mut sector_addr = iter_sector!(self, |inode: &Inode| -> bool {
             inode.is_none()
         });
 
-        get_block_cache(sector_addr, &self.device).lock().modify(0, &|inode: &mut Inode| {
+        if sector_addr == 0 {
+            let clusters_len = self.clusters.len();
+            let mut new_clusters = increase_cluster(self.clusters[clusters_len - 1], BLOCK_SIZE);
+            self.clusters.append(&mut new_clusters);
+            sector_addr = self.sblock.offset(new_clusters[0]);
+        }
+
+        get_block_cache(sector_addr, &self.device).lock().modify(0, |inode: &mut Inode| {
             inode.i_type = InodeType::DirEntry;
             inode.i_name.copy_from_slice(dir.as_bytes());
-            inode.i_cluster = cluster as u32;
+            inode.i_cluster = clusters[0] as u32;
             inode.i_pre_cluster = self.clusters[0] as u32;
         });
 
         Ok(DirEntry {
             device: Arc::clone(&self.device),
-            clusters: read_clusters(cluster),
+            clusters,
             sblock: &self.sblock,
         })
     }

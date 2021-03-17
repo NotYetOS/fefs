@@ -23,7 +23,7 @@ impl FATIterator {
         for offset in (0..).step_by(BLOCK_SIZE) {
             let cache = get_block_cache(fat_addr + offset, device);
             for loc in (0..BLOCK_SIZE).step_by(4) {
-                let ret = cache.lock().read(loc, &|location: &u32| { *location });
+                let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
                     cluster = offset / 4 + loc / 4;
                     break;
@@ -52,7 +52,7 @@ impl Iterator for FATIterator {
         for offset in (0..).step_by(BLOCK_SIZE) {
             let cache = get_block_cache(base_addr + offset, &self.device);
             for loc in (0..BLOCK_SIZE).step_by(4) {
-                let ret = cache.lock().read(loc, &|location: &u32| { *location });
+                let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
                     cluster = (offset + loc) / 4;
                     break;
@@ -150,7 +150,7 @@ impl FAT {
         });
     }
 
-    fn alloc(&mut self, size: usize) -> usize {
+    fn alloc(&mut self, size: usize) -> Vec<usize> {
         let clusters = self.free_clusters(size);
         for idx in (0..clusters.len()).step_by(2) {
             if idx == clusters.len() - 1 {
@@ -159,7 +159,7 @@ impl FAT {
                 self.write(clusters[idx], clusters[idx + 1]);
             }
         }
-        clusters[0]
+        clusters
     }
 
     fn dealloc(&mut self, cluster: usize) {
@@ -168,6 +168,12 @@ impl FAT {
             self.write(c, 0x00000000);
         }
         self.recycled.append(&mut clusters);
+    }
+
+    fn increase(&mut self, end_cluster: usize, size: usize) -> Vec<usize> {
+        let new_clusters = self.alloc(size);
+        self.write(end_cluster, new_clusters[0]);
+        new_clusters
     }
 }
 
@@ -204,7 +210,7 @@ impl FATManager {
         clusters
     }
 
-    fn alloc(&mut self, size: usize) -> usize {
+    fn alloc(&mut self, size: usize) -> Vec<usize> {
         let mut fat = self.inner();
         let cluster = fat.alloc(size);
         self.push(fat);
@@ -216,6 +222,13 @@ impl FATManager {
         fat.dealloc(cluster);
         self.push(fat);
     }
+
+    fn increase(&mut self, end_cluster: usize, size: usize) -> Vec<usize> {
+        let mut fat = self.inner();
+        let new_clusters = fat.increase(end_cluster, size);
+        self.push(fat);
+        new_clusters
+    }
 }
 
 lazy_static! {
@@ -226,7 +239,7 @@ pub fn init_fat_manager(device: &Arc<dyn BlockDevice>) {
     FAT_MANAGER.lock().init(device)
 }
 
-pub fn alloc_clusters(size: usize) -> usize {
+pub fn alloc_clusters(size: usize) -> Vec<usize> {
     FAT_MANAGER.lock().alloc(size)
 }
 
@@ -236,4 +249,8 @@ pub fn dealloc_clusters(cluster: usize) {
 
 pub fn read_clusters(cluster: usize) -> Vec<usize> {
     FAT_MANAGER.lock().read(cluster)
+}
+
+pub fn increase_cluster(cluster: usize, size: usize) -> Vec<usize> {
+    FAT_MANAGER.lock().increase(cluster, size)
 }
