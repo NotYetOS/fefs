@@ -2,7 +2,7 @@ use alloc::string::String;
 
 #[repr(u8)]
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-enum InodeType {
+pub enum InodeType {
     NoneEntry = 0,
     DirEntry = 1,
     FileEntry = 2,
@@ -12,22 +12,22 @@ enum InodeType {
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct Inode {
-    i_type: InodeType,
-    i_name: [u8; 17],
-    i_mode: u16,
-    i_uid: u16,
-    i_size_lo: u32,
-    i_atime: u32,
-    i_ctime: u32,
-    i_mtime: u32,
-    i_dtime: u32,
-    i_gid: u16,
-    i_links_count: u16,
-    i_blocks_lo: u16,
-    i_flags: u32,
-    i_cluster: u32,
-    i_pre_cluster: u32,
-    i_offset: u32,
+    pub(crate) i_type: InodeType,
+    pub(crate) i_name: [u8; 17],
+    pub(crate) i_mode: u16,
+    pub(crate) i_uid: u16,
+    pub(crate) i_size_lo: u32,
+    pub(crate) i_atime: u32,
+    pub(crate) i_ctime: u32,
+    pub(crate) i_mtime: u32,
+    pub(crate) i_dtime: u32,
+    pub(crate) i_gid: u16,
+    pub(crate) i_links_count: u16,
+    pub(crate) i_blocks_lo: u16,
+    pub(crate) i_flags: u32,
+    pub(crate) i_cluster: u32,
+    pub(crate) i_pre_cluster: u32,
+    pub(crate) i_offset: u32,
 }
 
 impl Inode {
