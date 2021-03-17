@@ -5,6 +5,7 @@ use super::device::BlockDevice;
 
 const FEFS_MAGIC: [u8; 4] = [0x66, 0x65, 0x66, 0x73];
 
+#[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct SuperBlock {
     magic: [u8; 4],
