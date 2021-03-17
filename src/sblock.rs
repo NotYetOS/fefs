@@ -31,7 +31,7 @@ impl SuperBlock {
 }
 
 pub fn get_sblock(device: &Arc<dyn BlockDevice>) -> SuperBlock {
-    get_block_cache(0, &Arc::clone(&device)).lock().read(0, |sblock: &SuperBlock| {
+    get_block_cache(0, &Arc::clone(&device)).lock().read(0, &|sblock: &SuperBlock| {
         assert!(sblock.is_valid(), "Error, Not FEFS");
         sblock.clone()
     })

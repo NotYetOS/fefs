@@ -16,6 +16,25 @@ use super::sblock::SuperBlock;
 use super::device::BlockDevice;
 use super::file::FileEntry;
 
+
+macro_rules! iter_sector {
+    ($self: ident, $f: expr) => {{
+        let mut exit = false;
+        let mut sector_addr = 0;
+        for &c in $self.clusters.iter() {
+            let addr = $self.sblock.offset(c);
+            for o in (0..$self.sblock.sector_per_cluster * BLOCK_SIZE).step_by(BLOCK_SIZE) {
+                exit = get_block_cache(addr, &$self.device).lock().read(o, $f);
+                if exit { 
+                    sector_addr = addr + o;
+                    break; 
+                }
+            }
+            if exit { break; }
+        }
+        sector_addr
+    }};
+}
 pub enum DirError {
     NotFindDir,
     NotFindFile,
@@ -54,9 +73,8 @@ impl<'a> DirEntry<'a> {
     pub fn mkdir(&self, dir: &str) -> Result<DirEntry, DirError> {
         if is_illegal(dir) { return Err(DirError::IllegalChar) };
         let cluster = alloc_clusters(BLOCK_SIZE);
-        let mut exit = false;
 
-        let sector_addr = self.iter_sector(&|inode: &Inode| -> bool {
+        let sector_addr = iter_sector!(self, |inode: &Inode| -> bool {
             inode.is_none()
         });
 
@@ -74,10 +92,9 @@ impl<'a> DirEntry<'a> {
         })
     }
 
-    fn find(&mut self, name: &str) -> Option<Inode> {
+    fn find(&self, name: &str) -> Option<Inode> {
         let mut ret = None;
-        let mut exit = false;
-        self.iter_sector(|inode: &Inode| -> bool {
+        iter_sector!(self, |inode: &Inode| -> bool {
             if inode.is_valid() && inode.name().eq(name) { 
                 ret = Some(*inode);
                 return true;
@@ -89,39 +106,10 @@ impl<'a> DirEntry<'a> {
 
     pub fn ls(&self) -> Vec<String> {
         let mut names = Vec::new();
-        self.iter_sector(|inode: &Inode| -> bool {
+        iter_sector!(self, |inode: &Inode| -> bool {
             if inode.is_valid() { names.push(inode.name()) }
             inode.is_none()
         });
         names
-    }
-
-    fn iter_sector<T>(&self, f: impl FnOnce(&T) -> bool) -> usize {
-        let mut exit = false;
-        let mut sector_addr = 0;
-        for &c in self.clusters.iter() {
-            let addr = self.sblock.offset(c);
-            for o in (0..self.sblock.sector_per_cluster * BLOCK_SIZE).step_by(BLOCK_SIZE) {
-                let exit: bool = get_block_cache(addr, &self.device).lock().read(o, &f);
-                if exit { 
-                    sector_addr = addr + o;
-                    break; 
-                }
-            }
-            if exit { break; }
-        }
-        sector_addr
-    }
-
-    fn iter_sector_mut<T>(&mut self, f: impl FnOnce(&mut T) -> bool) {
-        let mut exit = false;
-        for &c in self.clusters.iter() {
-            let addr = self.sblock.offset(c);
-            for o in (0..self.sblock.sector_per_cluster * BLOCK_SIZE).step_by(BLOCK_SIZE) {
-                let exit: bool = get_block_cache(addr, &self.device).lock().modify(o, &f);
-                if exit { break; }
-            }
-            if exit { break; }
-        }
     }
 }

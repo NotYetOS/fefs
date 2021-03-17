@@ -49,11 +49,11 @@ impl BlockCache {
         unsafe { &mut *(addr as *mut T) }
     }
 
-    pub fn read<T, V>(&self, offset: usize, f: &impl FnOnce(&T) -> V) -> V {
+    pub fn read<T, V>(&self, offset: usize, f: impl FnOnce(&T) -> V) -> V {
         f(self.get_ref(offset))
     }
 
-    pub fn modify<T, V>(&mut self, offset: usize, f: &impl FnOnce(&mut T) -> V) -> V {
+    pub fn modify<T, V>(&mut self, offset: usize, f: impl FnOnce(&mut T) -> V) -> V {
         let v = f(self.get_mut(offset));
         self.sync();
         v

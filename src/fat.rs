@@ -23,7 +23,7 @@ impl FATIterator {
         for offset in (0..).step_by(BLOCK_SIZE) {
             let cache = get_block_cache(fat_addr + offset, device);
             for loc in (0..BLOCK_SIZE).step_by(4) {
-                let ret = cache.lock().read(loc, |location: &u32| { *location });
+                let ret = cache.lock().read(loc, &|location: &u32| { *location });
                 if ret == 0 { 
                     cluster = offset / 4 + loc / 4;
                     break;
@@ -52,7 +52,7 @@ impl Iterator for FATIterator {
         for offset in (0..).step_by(BLOCK_SIZE) {
             let cache = get_block_cache(base_addr + offset, &self.device);
             for loc in (0..BLOCK_SIZE).step_by(4) {
-                let ret = cache.lock().read(loc, |location: &u32| { *location });
+                let ret = cache.lock().read(loc, &|location: &u32| { *location });
                 if ret == 0 { 
                     cluster = (offset + loc) / 4;
                     break;
@@ -136,7 +136,7 @@ impl FAT {
         let addr = self.iterator.fat_addr + cluster * 4;
 
         get_block_cache(addr, &self.iterator.device)
-            .lock().read(0, |cluster: &u32| {
+            .lock().read(0, &|cluster: &u32| {
             *cluster
         }) as usize
     }
@@ -145,7 +145,7 @@ impl FAT {
         let addr = self.iterator.fat_addr + cluster * 4;
 
         get_block_cache(addr, &self.iterator.device)
-            .lock().modify(0, |cluster: &mut u32| {
+            .lock().modify(0, &|cluster: &mut u32| {
             *cluster = value as u32;
         });
     }
