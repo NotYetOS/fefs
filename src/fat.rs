@@ -50,11 +50,12 @@ impl Iterator for FATIterator {
         let mut cluster = 0;
         let base_addr = self.fat_addr + self.current * 4;
         for offset in (0..).step_by(BLOCK_SIZE) {
-            let cache = get_block_cache(base_addr + offset, &self.device);
+            let addr = base_addr + offset;
+            let cache = get_block_cache(addr, &self.device);
             for loc in (0..BLOCK_SIZE).step_by(4) {
                 let ret = cache.lock().read(loc, |location: &u32| { *location });
                 if ret == 0 { 
-                    cluster = (offset + loc) / 4;
+                    cluster = (offset + loc) / 4 + self.current;
                     break;
                 };
             }
@@ -145,7 +146,7 @@ impl FAT {
         let addr = self.iterator.fat_addr + cluster * 4;
 
         get_block_cache(addr, &self.iterator.device)
-            .lock().modify(0, &|cluster: &mut u32| {
+            .lock().modify(0, |cluster: &mut u32| {
             *cluster = value as u32;
         });
     }
@@ -212,9 +213,9 @@ impl FATManager {
 
     fn alloc(&mut self, size: usize) -> Vec<usize> {
         let mut fat = self.inner();
-        let cluster = fat.alloc(size);
+        let clusters = fat.alloc(size);
         self.push(fat);
-        cluster
+        clusters
     }
 
     fn dealloc(&mut self, cluster: usize) {
@@ -229,6 +230,15 @@ impl FATManager {
         self.push(fat);
         new_clusters
     }
+}
+
+pub fn create_fat(addr: usize, device: &Arc<dyn BlockDevice>) {
+    get_block_cache(addr, device).lock().modify(0, |fat: &mut u64| {
+        *fat = 0xFFFFFFFFFFFFFFFF;
+    });
+    get_block_cache(addr, device).lock().modify(8, |fat: &mut u32| {
+        *fat = 0x0FFFFFFF;
+    });
 }
 
 lazy_static! {

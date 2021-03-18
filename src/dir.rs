@@ -10,8 +10,8 @@ use super::fat::{
     dealloc_clusters
 };
 use super::inode::{
-    Inode,
-    InodeType
+    INode,
+    INodeType
 };
 use super::BLOCK_SIZE;
 use super::is_illegal;
@@ -21,11 +21,14 @@ use super::device::BlockDevice;
 use super::file::FileEntry;
 use super::iter_sector;
 
+#[derive(Debug)]
 pub enum DirError {
     NotFound,
     NotFoundDir,
     NotFoundFile,
     IllegalChar,
+    DirExist,
+    FileExist,
 }
 
 pub struct DirEntry<'a> {
@@ -48,7 +51,7 @@ impl<'a> DirEntry<'a> {
 
     pub fn open_file(&self, file: &str) -> Result<FileEntry, DirError> {
         match self.find(file) {
-            Some(inode) if inode.is_filr() => Ok(FileEntry {
+            Some(inode) if inode.is_file() => Ok(FileEntry {
                 device: Arc::clone(&self.device),
                 clusters: read_clusters(inode.cluster()),
                 size: inode.i_size_lo as usize,
@@ -58,38 +61,34 @@ impl<'a> DirEntry<'a> {
         }
     }
 
-    pub fn mkdir(&mut self, dir: &str) -> Result<DirEntry, DirError> {
-        if is_illegal(dir) { return Err(DirError::IllegalChar) };
-        let clusters = alloc_clusters(BLOCK_SIZE);
-
-        let mut sector_addr = iter_sector!(self, |inode: &Inode| -> bool {
-            inode.is_none()
-        });
-
-        if sector_addr == 0 {
-            let clusters_len = self.clusters.len();
-            let mut new_clusters = increase_cluster(self.clusters[clusters_len - 1], BLOCK_SIZE);
-            self.clusters.append(&mut new_clusters);
-            sector_addr = self.sblock.offset(new_clusters[0]);
+    pub fn create_file(&mut self, file: &str) -> Result<FileEntry, DirError> {
+        match self.find(file) {
+            Some(_) => Err(DirError::FileExist),
+            None if is_illegal(file) => Err(DirError::IllegalChar),
+            None => Ok(FileEntry {
+                device: Arc::clone(&self.device),
+                clusters: self.create_inner(file, INodeType::FileEntry),
+                size: 0,
+                sblock: &self.sblock,
+            })
         }
-
-        get_block_cache(sector_addr, &self.device).lock().modify(0, |inode: &mut Inode| {
-            inode.i_type = InodeType::DirEntry;
-            inode.i_name.copy_from_slice(dir.as_bytes());
-            inode.i_cluster = clusters[0] as u32;
-            inode.i_pre_cluster = self.clusters[0] as u32;
-        });
-
-        Ok(DirEntry {
-            device: Arc::clone(&self.device),
-            clusters,
-            sblock: &self.sblock,
-        })
     }
 
-    pub fn ls(&self) -> Vec<Inode> {
+    pub fn mkdir(&mut self, dir: &str) -> Result<DirEntry, DirError> {
+        match self.find(dir) {
+            Some(_) => Err(DirError::FileExist),
+            None if is_illegal(dir) => Err(DirError::IllegalChar),
+            None => Ok(DirEntry {
+                device: Arc::clone(&self.device),
+                clusters: self.create_inner(dir, INodeType::DirEntry),
+                sblock: &self.sblock,
+            })
+        }
+    }
+
+    pub fn ls(&self) -> Vec<INode> {
         let mut inodes = Vec::new();
-        iter_sector!(self, |inode: &Inode| -> bool {
+        iter_sector!(self, |inode: &INode| -> bool {
             if inode.is_valid() { inodes.push(*inode) }
             inode.is_none()
         });
@@ -100,13 +99,13 @@ impl<'a> DirEntry<'a> {
         match self.find_tuple(name) {
             Some((inode, addr)) => {
                 match inode.i_type {
-                    InodeType::NoneEntry => {}
-                    InodeType::DirEntry => DirEntry {
+                    INodeType::NoneEntry => {}
+                    INodeType::DirEntry => DirEntry {
                         device: Arc::clone(&self.device),
                         clusters: read_clusters(inode.cluster()),
                         sblock: &self.sblock,
                     }.delete_inner(),
-                    InodeType::FileEntry => FileEntry {
+                    INodeType::FileEntry => FileEntry {
                         device: Arc::clone(&self.device),
                         clusters: read_clusters(inode.cluster()),
                         size: inode.i_size_lo as usize,
@@ -122,8 +121,8 @@ impl<'a> DirEntry<'a> {
     }
 
     fn clean_entry(&mut self, addr: usize) {
-        get_block_cache(addr, &self.device).lock().modify(0, |inode: &mut Inode| {
-            *inode = Inode::default()
+        get_block_cache(addr, &self.device).lock().modify(0, |inode: &mut INode| {
+            *inode = INode::default()
         });
     }
 
@@ -131,13 +130,13 @@ impl<'a> DirEntry<'a> {
         let inodes = self.ls();
         for (nth, inode) in inodes.iter().enumerate() {
             match inode.i_type {
-                InodeType::NoneEntry => {}
-                InodeType::DirEntry => DirEntry {
+                INodeType::NoneEntry => {}
+                INodeType::DirEntry => DirEntry {
                     device: Arc::clone(&self.device),
                     clusters: read_clusters(inode.cluster()),
                     sblock: &self.sblock,
                 }.delete_inner(),
-                InodeType::FileEntry => FileEntry {
+                INodeType::FileEntry => FileEntry {
                     device: Arc::clone(&self.device),
                     clusters: read_clusters(inode.cluster()),
                     size: inode.i_size_lo as usize,
@@ -152,9 +151,9 @@ impl<'a> DirEntry<'a> {
         }
     }
 
-    fn find(&self, name: &str) -> Option<Inode> {
+    fn find(&self, name: &str) -> Option<INode> {
         let mut ret = None;
-        iter_sector!(self, |inode: &Inode| -> bool {
+        iter_sector!(self, |inode: &INode| -> bool {
             if inode.is_valid() && inode.name().eq(name) { 
                 ret = Some(*inode);
                 return true;
@@ -164,9 +163,9 @@ impl<'a> DirEntry<'a> {
         ret
     }
 
-    fn find_tuple(&self, name: &str) -> Option<(Inode, usize)> {
-        let mut ret = Inode::default();
-        let addr = iter_sector!(self, |inode: &Inode| -> bool {
+    fn find_tuple(&self, name: &str) -> Option<(INode, usize)> {
+        let mut ret = INode::default();
+        let addr = iter_sector!(self, |inode: &INode| -> bool {
             if inode.is_valid() && inode.name().eq(name) { 
                 ret = *inode;
                 return true;
@@ -178,5 +177,30 @@ impl<'a> DirEntry<'a> {
         } else {
             Some((ret, addr))
         }
+    }
+
+    fn create_inner(&mut self, name: &str, inode_type: INodeType) -> Vec<usize> {
+        let clusters = alloc_clusters(BLOCK_SIZE);
+
+        let mut sector_addr = iter_sector!(self, |inode: &INode| -> bool {
+            inode.is_none()
+        });
+
+        if sector_addr == 0 {
+            let clusters_len = self.clusters.len();
+            let mut new_clusters = increase_cluster(self.clusters[clusters_len - 1], BLOCK_SIZE);
+            self.clusters.append(&mut new_clusters);
+            sector_addr = self.sblock.offset(new_clusters[0]);
+        }
+
+        get_block_cache(sector_addr, &self.device).lock().modify(0, |inode: &mut INode| {
+            inode.i_type = inode_type;
+            &inode.i_name[0..name.len()].copy_from_slice(name.as_bytes());
+            inode.i_name_len = name.len() as u8;
+            inode.i_cluster = clusters[0] as u32;
+            inode.i_pre_cluster = self.clusters[0] as u32;
+        });
+
+        clusters
     }
 }

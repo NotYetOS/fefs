@@ -5,9 +5,14 @@ use super::fat::read_clusters;
 use super::dir::DirEntry;
 use super::sblock::SuperBlock;
 use super::device::BlockDevice;
-use super::sblock::get_sblock;
-use super::fat::init_fat_manager;
-
+use super::fat::{
+    create_fat,
+    init_fat_manager,
+};
+use super::sblock::{
+    get_sblock,
+    write_sblock,
+};
 
 pub struct FileSystem {
     device: Arc<dyn BlockDevice>,
@@ -15,6 +20,27 @@ pub struct FileSystem {
 }
 
 impl FileSystem {
+    pub fn create(
+        device: Arc<dyn BlockDevice>, 
+        byte_per_sector: usize,
+        sector_per_cluster: usize,
+    ) -> Arc<Mutex<Self>> {
+        let sblock = SuperBlock {
+            magic: [0x66, 0x65, 0x66, 0x73],
+            byte_per_sector,
+            sector_per_cluster,
+            sector_per_fat: sector_per_cluster * 2,
+            root_cluster: 2,
+        };
+        create_fat(sblock.fat(), &device);
+        write_sblock(sblock, &device);
+        init_fat_manager(&device);
+        Arc::new(Mutex::new(Self {
+            device,
+            sblock,
+        }))
+    }
+
     pub fn open(device: Arc<dyn BlockDevice>) -> Arc<Mutex<Self>> {
         let sblock = get_sblock(&device);
         init_fat_manager(&device);

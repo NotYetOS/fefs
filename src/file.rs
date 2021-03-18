@@ -19,6 +19,7 @@ use super::sblock::SuperBlock;
 use super::cache::get_block_cache;
 
 
+#[derive(Debug)]
 pub enum FileError {
     BufTooSmall,
 }
