@@ -43,7 +43,7 @@ impl Data {
 
     fn copy_from_slice(buf: &[u8]) -> Self {
         let mut data = Data::empty();
-        data.inner.copy_from_slice(buf);
+        data.inner[0..buf.len()].copy_from_slice(buf);
         data
     }
 }
@@ -63,7 +63,7 @@ impl<'a> FileEntry<'a> {
         iter_sector!(self, |data: &Data| {
             let start = idx * BLOCK_SIZE;
             let end = min((idx + 1) * BLOCK_SIZE, size);
-            buf[start..end].copy_from_slice(&data.inner);
+            buf[start..end].copy_from_slice(&data.inner[0..end - start]);
             idx += 1;
             end == size
         });

@@ -21,7 +21,7 @@ use super::device::BlockDevice;
 use super::file::FileEntry;
 use super::iter_sector;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DirError {
     NotFound,
     NotFoundDir,
@@ -76,7 +76,7 @@ impl<'a> DirEntry<'a> {
 
     pub fn mkdir(&mut self, dir: &str) -> Result<DirEntry, DirError> {
         match self.find(dir) {
-            Some(_) => Err(DirError::FileExist),
+            Some(_) => Err(DirError::DirExist),
             None if is_illegal(dir) => Err(DirError::IllegalChar),
             None => Ok(DirEntry {
                 device: Arc::clone(&self.device),
@@ -99,7 +99,7 @@ impl<'a> DirEntry<'a> {
         match self.find_tuple(name) {
             Some((inode, addr)) => {
                 match inode.i_type {
-                    INodeType::NoneEntry => {}
+                    INodeType::NoneEntry => unreachable!(),
                     INodeType::DirEntry => DirEntry {
                         device: Arc::clone(&self.device),
                         clusters: read_clusters(inode.cluster()),
@@ -130,7 +130,7 @@ impl<'a> DirEntry<'a> {
         let inodes = self.ls();
         for (nth, inode) in inodes.iter().enumerate() {
             match inode.i_type {
-                INodeType::NoneEntry => {}
+                INodeType::NoneEntry => unreachable!(),
                 INodeType::DirEntry => DirEntry {
                     device: Arc::clone(&self.device),
                     clusters: read_clusters(inode.cluster()),
@@ -172,7 +172,7 @@ impl<'a> DirEntry<'a> {
             }
             inode.is_none()
         });
-        if addr == 0 {
+        if ret.i_type == INodeType::NoneEntry {
             None
         } else {
             Some((ret, addr))
