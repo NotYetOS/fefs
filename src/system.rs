@@ -54,7 +54,7 @@ impl FileSystem {
         DirEntry {
             device: Arc::clone(&self.device),
             clusters: read_clusters(self.sblock.root_cluster),
-            sblock: &self.sblock,
+            sblock: self.sblock,
         }
     }
 }

@@ -51,8 +51,11 @@ impl BlockCache {
         f(self.get_ref(offset))
     }
 
+    // if modified, just sync...
     pub fn modify<T, V>(&mut self, offset: usize, f: impl FnOnce(&mut T) -> V) -> V {
-        f(self.get_mut(offset))
+        let v = f(self.get_mut(offset));
+        self.sync();
+        v
     }
 
     pub fn sync(&mut self) {
@@ -63,11 +66,11 @@ impl BlockCache {
     }
 }
 
-impl Drop for BlockCache {
-    fn drop(&mut self) {
-        self.sync()
-    }
-}
+// impl Drop for BlockCache {
+//     fn drop(&mut self) {
+//         self.sync()
+//     }
+// }
 
 const BLOCK_CACHE_SIZE: usize = 16;
 

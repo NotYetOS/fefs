@@ -28,19 +28,19 @@ pub enum DirError {
     FileExist,
 }
 
-pub struct DirEntry<'a> {
+pub struct DirEntry {
     pub(crate) device: Arc<dyn BlockDevice>,
     pub(crate) clusters: Vec<usize>,
-    pub(crate) sblock: &'a SuperBlock,
+    pub(crate) sblock: SuperBlock,
 }
 
-impl<'a> DirEntry<'a> {
+impl DirEntry {
     pub fn cd(&self, dir: &str) -> Result<DirEntry, DirError> {
         match self.find(dir) {
             Some(inode) if inode.is_dir() => Ok(DirEntry {
                 device: Arc::clone(&self.device),
                 clusters: read_clusters(inode.cluster()),
-                sblock: &self.sblock,
+                sblock: self.sblock,
             }),
             _ => Err(DirError::NotFoundDir)
         }
@@ -52,7 +52,7 @@ impl<'a> DirEntry<'a> {
                 device: Arc::clone(&self.device),
                 clusters: read_clusters(inode.cluster()),
                 size: inode.i_size_lo as usize,
-                sblock: &self.sblock,
+                sblock: self.sblock,
             }),
             _ => Err(DirError::NotFoundFile)
         }
@@ -66,7 +66,7 @@ impl<'a> DirEntry<'a> {
                 device: Arc::clone(&self.device),
                 clusters: self.create_inner(file, INodeType::FileEntry),
                 size: 0,
-                sblock: &self.sblock,
+                sblock: self.sblock,
             })
         }
     }
@@ -78,7 +78,7 @@ impl<'a> DirEntry<'a> {
             None => Ok(DirEntry {
                 device: Arc::clone(&self.device),
                 clusters: self.create_inner(dir, INodeType::DirEntry),
-                sblock: &self.sblock,
+                sblock: self.sblock,
             })
         }
     }
@@ -100,13 +100,13 @@ impl<'a> DirEntry<'a> {
                     INodeType::DirEntry => DirEntry {
                         device: Arc::clone(&self.device),
                         clusters: read_clusters(inode.cluster()),
-                        sblock: &self.sblock,
+                        sblock: self.sblock,
                     }.delete_inner(),
                     INodeType::FileEntry => FileEntry {
                         device: Arc::clone(&self.device),
                         clusters: read_clusters(inode.cluster()),
                         size: inode.i_size_lo as usize,
-                        sblock: &self.sblock,
+                        sblock: self.sblock,
                     }.clean_data()
                 }
                 self.clean_entry(addr);
@@ -131,13 +131,13 @@ impl<'a> DirEntry<'a> {
                 INodeType::DirEntry => DirEntry {
                     device: Arc::clone(&self.device),
                     clusters: read_clusters(inode.cluster()),
-                    sblock: &self.sblock,
+                    sblock: self.sblock,
                 }.delete_inner(),
                 INodeType::FileEntry => FileEntry {
                     device: Arc::clone(&self.device),
                     clusters: read_clusters(inode.cluster()),
                     size: inode.i_size_lo as usize,
-                    sblock: &self.sblock,
+                    sblock: self.sblock,
                 }.clean_data()
             }
             let index = nth / self.sblock.sector_per_cluster;

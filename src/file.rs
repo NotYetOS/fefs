@@ -43,14 +43,14 @@ impl Data {
     }
 }
 
-pub struct FileEntry<'a> {
+pub struct FileEntry {
     pub(crate) device: Arc<dyn BlockDevice>,
     pub(crate) clusters: Vec<usize>,
     pub(crate) size: usize,
-    pub(crate) sblock: &'a SuperBlock,
+    pub(crate) sblock: SuperBlock,
 }
 
-impl<'a> FileEntry<'a> {
+impl FileEntry {
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, FileError> {
         if self.size > buf.len() { return Err(FileError::BufTooSmall) }
         let mut idx = 0;
