@@ -1,8 +1,12 @@
-use alloc::{
-    sync::Arc, 
-    vec::Vec
-};
-
+use alloc::sync::Arc;
+use alloc::vec::Vec;
+use super::BLOCK_SIZE;
+use super::is_illegal;
+use super::cache::get_block_cache;
+use super::sblock::SuperBlock;
+use super::device::BlockDevice;
+use super::file::FileEntry;
+use super::iter_sector;
 use super::fat::{
     alloc_clusters,
     read_clusters,
@@ -13,13 +17,6 @@ use super::inode::{
     INode,
     INodeType
 };
-use super::BLOCK_SIZE;
-use super::is_illegal;
-use super::cache::get_block_cache;
-use super::sblock::SuperBlock;
-use super::device::BlockDevice;
-use super::file::FileEntry;
-use super::iter_sector;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DirError {

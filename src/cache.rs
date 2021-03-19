@@ -1,7 +1,5 @@
-use alloc::{
-    collections::VecDeque, 
-    sync::Arc
-};
+use alloc::collections::VecDeque;
+use alloc::sync::Arc;
 use spin::Mutex;
 use lazy_static::lazy_static;
 
@@ -53,11 +51,8 @@ impl BlockCache {
         f(self.get_ref(offset))
     }
 
-    // if modified, just sync
     pub fn modify<T, V>(&mut self, offset: usize, f: impl FnOnce(&mut T) -> V) -> V {
-        let v = f(self.get_mut(offset));
-        self.sync();
-        v
+        f(self.get_mut(offset))
     }
 
     pub fn sync(&mut self) {
@@ -92,6 +87,7 @@ impl BlockCacheManager {
         addr: usize,
         device: &Arc<dyn BlockDevice>
     ) -> Arc<Mutex<BlockCache>> {
+        assert!(addr % BLOCK_SIZE == 0);
         match self.queue
                 .iter()
                 .find(|&&(_addr, _)| _addr == addr) {

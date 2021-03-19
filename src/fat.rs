@@ -2,7 +2,6 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use spin::Mutex;
 use lazy_static::lazy_static;
-
 use super::BLOCK_SIZE;
 use super::cache::get_block_cache;
 use super::sblock::get_sblock;
@@ -22,10 +21,10 @@ impl FATIterator {
         let fat_addr = sblock.fat();
         for offset in (0..).step_by(BLOCK_SIZE) {
             let cache = get_block_cache(fat_addr + offset, device);
-            for loc in (0..BLOCK_SIZE).step_by(4) {
-                let ret = cache.lock().read(loc, |location: &u32| { *location });
+            for location in (0..BLOCK_SIZE).step_by(4) {
+                let ret = cache.lock().read(location, |cluster_value: &u32| { *cluster_value });
                 if ret == 0 { 
-                    cluster = offset / 4 + loc / 4;
+                    cluster = (offset + location) / 4;
                     break;
                 };
             }
@@ -47,26 +46,26 @@ impl Iterator for FATIterator {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let mut cluster = 0;
-        let base_addr = self.fat_addr + self.current * 4;
+        let base_addr = (self.fat_addr + self.current * 4) / BLOCK_SIZE * BLOCK_SIZE;
+        let mut exit = false;
         for offset in (0..).step_by(BLOCK_SIZE) {
             let addr = base_addr + offset;
             let cache = get_block_cache(addr, &self.device);
-            for loc in (0..BLOCK_SIZE).step_by(4) {
-                let ret = cache.lock().read(loc, |location: &u32| { *location });
+            for location in (0..BLOCK_SIZE).step_by(4) {
+                let ret = cache.lock().read(location, |cluster_value: &u32| { *cluster_value });
                 if ret == 0 { 
-                    cluster = (offset + loc) / 4 + self.current;
+                    self.current = (offset + location) / 4;
+                    exit = true;
                     break;
                 };
             }
-            if cluster != 0 { break; }
+            if exit { break; }
         }
 
-        if cluster > self.end {
+        if self.current > self.end {
             None
         } else {
-            self.current = cluster;
-            Some(cluster)
+            Some(self.current)
         }
     }
 }
@@ -134,19 +133,21 @@ impl FAT {
     }
 
     fn read(&self, cluster: usize) -> usize {
-        let addr = self.iterator.fat_addr + cluster * 4;
+        let (addr, offset) = self.get_block_offset(cluster);
 
         get_block_cache(addr, &self.iterator.device)
-            .lock().read(0, &|cluster: &u32| {
+            .lock().read(offset, &|cluster: &u32| {
             *cluster
         }) as usize
     }
 
     fn write(&mut self, cluster: usize, value: usize) {
-        let addr = self.iterator.fat_addr + cluster * 4;
+        // let addr = self.iterator.fat_addr + cluster * 4;
+        let (addr, offset) = self.get_block_offset(cluster);
+       //  assert_eq!(t1 + t2, addr);
 
         get_block_cache(addr, &self.iterator.device)
-            .lock().modify(0, |cluster: &mut u32| {
+            .lock().modify(offset, |cluster: &mut u32| {
             *cluster = value as u32;
         });
     }
@@ -175,6 +176,12 @@ impl FAT {
         let new_clusters = self.alloc(size);
         self.write(end_cluster, new_clusters[0]);
         new_clusters
+    }
+
+    fn get_block_offset(&self, cluster: usize) -> (usize, usize) {
+        let addr = self.iterator.fat_addr;
+        let loc = cluster * 4;
+        (addr + loc / BLOCK_SIZE * BLOCK_SIZE, loc % BLOCK_SIZE) 
     }
 }
 

@@ -1,10 +1,10 @@
 use core::cmp::min;
-
-use alloc::{
-    sync::Arc, 
-    vec::Vec
-};
-
+use alloc::sync::Arc;
+use alloc:: vec::Vec;
+use super::BLOCK_SIZE;
+use super::device::BlockDevice;
+use super::sblock::SuperBlock;
+use super::cache::get_block_cache;
 use super::fat::{
     alloc_clusters, 
     dealloc_clusters
@@ -13,11 +13,6 @@ use super::{
     iter_sector,
     iter_sector_mut
 };
-use super::BLOCK_SIZE;
-use super::device::BlockDevice;
-use super::sblock::SuperBlock;
-use super::cache::get_block_cache;
-
 
 #[derive(Debug)]
 pub enum FileError {

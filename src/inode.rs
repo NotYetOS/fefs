@@ -1,5 +1,4 @@
 use core::fmt::Debug;
-
 use alloc::string::String;
 
 #[repr(u8)]
@@ -71,6 +70,7 @@ impl Debug for INode {
         f.debug_struct("INode")
             .field("name", &self.name())
             .field("type", &self.i_type)
+            .field("cluster", &self.i_cluster)
             .finish()
     }
 }
