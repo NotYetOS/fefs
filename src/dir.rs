@@ -172,7 +172,7 @@ impl<'a> DirEntry<'a> {
             }
             inode.is_none()
         });
-        if ret.i_type == INodeType::NoneEntry {
+        if ret.is_none() {
             None
         } else {
             Some((ret, addr))
