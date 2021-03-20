@@ -142,9 +142,7 @@ impl FAT {
     }
 
     fn write(&mut self, cluster: usize, value: usize) {
-        // let addr = self.iterator.fat_addr + cluster * 4;
         let (addr, offset) = self.get_block_offset(cluster);
-       //  assert_eq!(t1 + t2, addr);
 
         get_block_cache(addr, &self.iterator.device)
             .lock().modify(offset, |cluster: &mut u32| {

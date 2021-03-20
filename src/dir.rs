@@ -52,6 +52,7 @@ impl DirEntry {
                 device: Arc::clone(&self.device),
                 clusters: read_clusters(inode.cluster()),
                 size: inode.i_size_lo as usize,
+                seek_at: 0,
                 sblock: self.sblock,
             }),
             _ => Err(DirError::NotFoundFile)
@@ -66,6 +67,7 @@ impl DirEntry {
                 device: Arc::clone(&self.device),
                 clusters: self.create_inner(file, INodeType::FileEntry),
                 size: 0,
+                seek_at: 0,
                 sblock: self.sblock,
             })
         }
@@ -106,6 +108,7 @@ impl DirEntry {
                         device: Arc::clone(&self.device),
                         clusters: read_clusters(inode.cluster()),
                         size: inode.i_size_lo as usize,
+                        seek_at: 0,
                         sblock: self.sblock,
                     }.clean_data()
                 }
@@ -114,6 +117,13 @@ impl DirEntry {
                 Ok(())
             },
             None => Err(DirError::NotFound)
+        }
+    }
+
+    pub fn exist(&self, name: &str) -> bool {
+        match self.find(name) {
+            Some(_) => true,
+            None => false
         }
     }
 
@@ -137,6 +147,7 @@ impl DirEntry {
                     device: Arc::clone(&self.device),
                     clusters: read_clusters(inode.cluster()),
                     size: inode.i_size_lo as usize,
+                    seek_at: 0,
                     sblock: self.sblock,
                 }.clean_data()
             }

@@ -14,9 +14,9 @@ use super::{
     iter_sector_mut
 };
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FileError {
-    BufTooSmall,
+    SeekValueOverFlow
 }
 
 pub enum WriteType {
@@ -47,22 +47,34 @@ pub struct FileEntry {
     pub(crate) device: Arc<dyn BlockDevice>,
     pub(crate) clusters: Vec<usize>,
     pub(crate) size: usize,
+    pub(crate) seek_at: usize,
     pub(crate) sblock: SuperBlock,
 }
 
 impl FileEntry {
+    pub fn seek(&mut self, at: usize) -> Result<(), FileError> {
+        if at > self.size { return Err(FileError::SeekValueOverFlow); }
+        self.seek_at = at;
+        Ok(())
+    }
+
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, FileError> {
-        if self.size > buf.len() { return Err(FileError::BufTooSmall) }
         let mut idx = 0;
+        let mut len = 0;
         let size = self.size;
+        let seek_at = self.seek_at;
+        let buf_len = buf.len();
+
         iter_sector!(self, |data: &Data| {
             let start = idx * BLOCK_SIZE;
-            let end = min((idx + 1) * BLOCK_SIZE, size);
-            buf[start..end].copy_from_slice(&data.inner[0..end - start]);
+            let end = min(min((idx + 1) * BLOCK_SIZE, buf_len), size - seek_at);
+            buf[start..end].copy_from_slice(&data.inner[seek_at..end - start + seek_at]);
             idx += 1;
-            end == size
+            len += end - start;
+            end == buf_len || end == size - seek_at
         });
-        Ok(self.size)
+
+        Ok(if len < size { len } else { size })
     }
 
     pub fn write(&mut self, buf: &[u8], write_type: WriteType) -> Result<(), FileError> {
