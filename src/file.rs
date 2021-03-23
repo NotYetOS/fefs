@@ -2,6 +2,7 @@ use core::cmp::min;
 use alloc::sync::Arc;
 use alloc:: vec::Vec;
 use super::BLOCK_SIZE;
+use super::inode::INode;
 use super::device::BlockDevice;
 use super::sblock::SuperBlock;
 use super::cache::get_block_cache;
@@ -48,6 +49,7 @@ pub struct FileEntry {
     pub(crate) clusters: Vec<usize>,
     pub(crate) size: usize,
     pub(crate) seek_at: usize,
+    pub(crate) addr: usize,
     pub(crate) sblock: SuperBlock,
 }
 
@@ -95,7 +97,8 @@ impl FileEntry {
             }
             WriteType::Append => {}
         }
-        self.size = buf.len();
+
+        self.update_size(buf.len());
         Ok(())
     }
 
@@ -104,5 +107,12 @@ impl FileEntry {
             *data = Data::empty();
             false
         });
+    }
+
+    fn update_size(&mut self, size: usize) {
+        self.size = size;
+        get_block_cache(self.addr, &self.device).lock().modify(0, |inode: &mut INode| {
+            inode.i_size_lo = size as u32;
+        })
     }
 }

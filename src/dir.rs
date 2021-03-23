@@ -47,12 +47,14 @@ impl DirEntry {
     }
 
     pub fn open_file(&self, file: &str) -> Result<FileEntry, DirError> {
-        match self.find(file) {
+        let (inode_option, addr) = self.find_tuple(file);
+        match inode_option {
             Some(inode) if inode.is_file() => Ok(FileEntry {
                 device: Arc::clone(&self.device),
                 clusters: read_clusters(inode.cluster()),
                 size: inode.i_size_lo as usize,
                 seek_at: 0,
+                addr,
                 sblock: self.sblock,
             }),
             _ => Err(DirError::NotFoundFile)
@@ -60,7 +62,8 @@ impl DirEntry {
     }
 
     pub fn create_file(&mut self, file: &str) -> Result<FileEntry, DirError> {
-        match self.find(file) {
+        let (inode_option, addr) = self.find_tuple(file);
+        match inode_option {
             Some(_) => Err(DirError::FileExist),
             None if is_illegal(file) => Err(DirError::IllegalChar),
             None => Ok(FileEntry {
@@ -68,6 +71,7 @@ impl DirEntry {
                 clusters: self.create_inner(file, INodeType::FileEntry),
                 size: 0,
                 seek_at: 0,
+                addr,
                 sblock: self.sblock,
             })
         }
@@ -95,8 +99,9 @@ impl DirEntry {
     }
 
     pub fn delete(&mut self, name: &str) -> Result<(), DirError> {
-        match self.find_tuple(name) {
-            Some((inode, addr)) => {
+        let (inode_option, addr) = self.find_tuple(name);
+        match inode_option {
+            Some(inode) => {
                 match inode.i_type {
                     INodeType::NoneEntry => unreachable!(),
                     INodeType::DirEntry => DirEntry {
@@ -109,6 +114,7 @@ impl DirEntry {
                         clusters: read_clusters(inode.cluster()),
                         size: inode.i_size_lo as usize,
                         seek_at: 0,
+                        addr: 0,
                         sblock: self.sblock,
                     }.clean_data()
                 }
@@ -148,6 +154,7 @@ impl DirEntry {
                     clusters: read_clusters(inode.cluster()),
                     size: inode.i_size_lo as usize,
                     seek_at: 0,
+                    addr: 0,
                     sblock: self.sblock,
                 }.clean_data()
             }
@@ -171,7 +178,7 @@ impl DirEntry {
         ret
     }
 
-    fn find_tuple(&self, name: &str) -> Option<(INode, usize)> {
+    fn find_tuple(&self, name: &str) -> (Option<INode>, usize) {
         let mut ret = INode::default();
         let addr = iter_sector!(self, |inode: &INode| -> bool {
             if inode.is_valid() && inode.name().eq(name) { 
@@ -181,9 +188,9 @@ impl DirEntry {
             inode.is_none()
         });
         if ret.is_none() {
-            None
+            (None, addr)
         } else {
-            Some((ret, addr))
+            (Some(ret), addr)
         }
     }
 

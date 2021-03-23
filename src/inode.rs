@@ -70,6 +70,7 @@ impl Debug for INode {
         f.debug_struct("INode")
             .field("name", &self.name())
             .field("type", &self.i_type)
+            .field("size", &self.i_size_lo)
             .field("cluster", &self.i_cluster)
             .finish()
     }
