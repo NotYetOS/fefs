@@ -109,10 +109,16 @@ impl FAT {
     }
 
     fn free_cluster(&mut self) -> usize {
-        match self.iterator.next() {
+        let cluster = match self.recycled.pop() {
             Some(cluster) => cluster,
-            None => panic!("no fat can be allocated"),
-        }
+            None => match self.iterator.next() {
+                Some(cluster) => cluster,
+                None => panic!("no fat can be allocated"),
+            }
+        };
+        
+        self.write(cluster, 0x0FFFFFFF);
+        cluster
     }
 
     fn allocated_clusters(&self, cluster: usize) -> Vec<usize> {
@@ -153,9 +159,7 @@ impl FAT {
     fn alloc(&mut self, size: usize) -> Vec<usize> {
         let clusters = self.free_clusters(size);
         for idx in (0..clusters.len()).step_by(2) {
-            if idx == clusters.len() - 1 {
-                self.write(clusters[idx], 0x0FFFFFFF);
-            } else {
+            if idx != clusters.len() - 1 {
                 self.write(clusters[idx], clusters[idx + 1]);
             }
         }

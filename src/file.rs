@@ -86,6 +86,7 @@ impl FileEntry {
             WriteType::OverWritten => {
                 self.clean_data();
                 dealloc_clusters(self.clusters[0]);
+                self.clusters.clear();
                 self.clusters = alloc_clusters(buf.len());
                 iter_sector_mut!(self, |data: &mut Data| {
                     let start = idx * BLOCK_SIZE;
@@ -94,11 +95,12 @@ impl FileEntry {
                     idx += 1;
                     end == len
                 });
+                self.size = buf.len();
             }
             WriteType::Append => {}
         }
 
-        self.update_size(buf.len());
+        self.update();
         Ok(())
     }
 
@@ -109,10 +111,10 @@ impl FileEntry {
         });
     }
 
-    fn update_size(&mut self, size: usize) {
-        self.size = size;
+    fn update(&mut self) {
         get_block_cache(self.addr, &self.device).lock().modify(0, |inode: &mut INode| {
-            inode.i_size_lo = size as u32;
+            inode.i_size_lo = self.size as u32;
+            inode.i_cluster = self.clusters[0] as u32;
         })
     }
 }
