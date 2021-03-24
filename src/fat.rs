@@ -158,9 +158,11 @@ impl FAT {
 
     fn alloc(&mut self, size: usize) -> Vec<usize> {
         let clusters = self.free_clusters(size);
-        for idx in (0..clusters.len()).step_by(2) {
+        for idx in 0..clusters.len() {
             if idx != clusters.len() - 1 {
                 self.write(clusters[idx], clusters[idx + 1]);
+            } else {
+                self.write(clusters[idx], 0x0FFFFFFF);
             }
         }
         clusters

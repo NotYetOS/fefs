@@ -60,7 +60,7 @@ impl FileEntry {
         Ok(())
     }
 
-    pub fn read_to_vec(&mut self, buf: &mut Vec<u8>) -> Result<usize, FileError> {
+    pub fn read_to_vec(&self, buf: &mut Vec<u8>) -> Result<usize, FileError> {
         buf.clear();
         
         let mut idx = 0;
@@ -78,7 +78,6 @@ impl FileEntry {
         });
 
         Ok(if len < size { len } else { size })
-
     }
 
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, FileError> {
