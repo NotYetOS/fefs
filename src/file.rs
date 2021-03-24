@@ -61,6 +61,8 @@ impl FileEntry {
     }
 
     pub fn read_to_vec(&mut self, buf: &mut Vec<u8>) -> Result<usize, FileError> {
+        buf.clear();
+        
         let mut idx = 0;
         let mut len = 0;
         let size = self.size;
