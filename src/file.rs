@@ -60,12 +60,33 @@ impl FileEntry {
         Ok(())
     }
 
+    pub fn read_to_vec(&mut self, buf: &mut Vec<u8>) -> Result<usize, FileError> {
+        let mut idx = 0;
+        let mut len = 0;
+        let size = self.size;
+        let seek_at = self.seek_at;
+        
+        iter_sector!(self, |data: &Data| {
+            let start = idx * BLOCK_SIZE;
+            let end = min((idx + 1) * BLOCK_SIZE, size - seek_at);
+            buf.append(&mut data.inner[seek_at..end - start + seek_at].to_vec());
+            idx += 1;
+            len += end - start;
+            end == size - seek_at
+        });
+
+        Ok(if len < size { len } else { size })
+
+    }
+
     pub fn read(&self, buf: &mut [u8]) -> Result<usize, FileError> {
         let mut idx = 0;
         let mut len = 0;
         let size = self.size;
         let seek_at = self.seek_at;
         let buf_len = buf.len();
+
+        if buf_len == 0 { panic!("if you use vec, you need use read_to_vec()") };
 
         iter_sector!(self, |data: &Data| {
             let start = idx * BLOCK_SIZE;
