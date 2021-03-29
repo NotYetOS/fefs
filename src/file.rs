@@ -54,6 +54,10 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
+    pub fn size(&self) -> usize {
+        self.size
+    }
+    
     pub fn seek(&mut self, at: usize) -> Result<(), FileError> {
         if at > self.size { return Err(FileError::SeekValueOverFlow); }
         self.seek_at = at;
