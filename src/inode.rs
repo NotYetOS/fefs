@@ -38,29 +38,33 @@ pub struct INode {
 }
 
 impl INode {
-    pub(crate) fn is_dir(&self) -> bool {
+    pub fn is_dir(&self) -> bool {
         self.i_type == INodeType::DirEntry
     }
 
-    pub(crate) fn is_file(&self) -> bool {
+    pub fn is_file(&self) -> bool {
         self.i_type == INodeType::FileEntry
     }
 
-    pub(crate) fn is_valid(&self) -> bool {
+    pub fn is_valid(&self) -> bool {
         !self.is_none()
     }
 
-    pub(crate) fn is_none(&self) -> bool {
+    pub fn is_none(&self) -> bool {
         self.i_type == INodeType::NoneEntry
     }
 
-    pub(crate) fn name(&self) -> String {
-        let len = self.i_name_len as usize;
-        core::str::from_utf8(&self.i_name[0..len]).unwrap().into()
+    pub fn cluster(&self) -> usize {
+        self.i_cluster as usize
     }
 
-    pub(crate) fn cluster(&self) -> usize {
-        self.i_cluster as usize
+    pub fn inode_type(&self) -> INodeType {
+        self.i_type
+    }
+
+    pub fn name(&self) -> String {
+        let len = self.i_name_len as usize;
+        core::str::from_utf8(&self.i_name[0..len]).unwrap().into()
     }
 }
 
