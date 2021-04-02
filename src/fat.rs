@@ -46,7 +46,8 @@ impl Iterator for FATIterator {
     type Item = usize;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let base_addr = (self.fat_addr + self.current * 4) / BLOCK_SIZE * BLOCK_SIZE;
+        let cluster_offset = self.current * 4 / BLOCK_SIZE * BLOCK_SIZE;
+        let base_addr = self.fat_addr + cluster_offset;
         let mut exit = false;
         for offset in (0..).step_by(BLOCK_SIZE) {
             let addr = base_addr + offset;
@@ -54,7 +55,7 @@ impl Iterator for FATIterator {
             for location in (0..BLOCK_SIZE).step_by(4) {
                 let ret = cache.lock().read(location, |cluster_value: &u32| { *cluster_value });
                 if ret == 0 { 
-                    self.current = (offset + location) / 4;
+                    self.current = (cluster_offset + offset + location) / 4;
                     exit = true;
                     break;
                 };
@@ -116,7 +117,7 @@ impl FAT {
                 None => panic!("no fat can be allocated"),
             }
         };
-        
+
         self.write(cluster, 0x0FFFFFFF);
         cluster
     }
