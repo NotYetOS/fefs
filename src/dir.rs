@@ -71,7 +71,12 @@ impl DirEntry {
                 clusters: self.create_inner(file, INodeType::FileEntry),
                 size: 0,
                 seek_at: 0,
-                addr,
+                addr: if addr == 0 {
+                    let cluster = *self.clusters.last().unwrap();
+                    self.sblock.offset(cluster)
+                } else {
+                    addr
+                },
                 sblock: self.sblock,
             })
         }
@@ -195,8 +200,6 @@ impl DirEntry {
     }
 
     fn create_inner(&mut self, name: &str, inode_type: INodeType) -> Vec<usize> {
-        let clusters = alloc_clusters(BLOCK_SIZE);
-
         let mut sector_addr = iter_sector!(self, |inode: &INode| -> bool {
             inode.is_none()
         });
@@ -204,9 +207,11 @@ impl DirEntry {
         if sector_addr == 0 {
             let clusters_len = self.clusters.len();
             let mut new_clusters = increase_cluster(self.clusters[clusters_len - 1], BLOCK_SIZE);
-            self.clusters.append(&mut new_clusters);
             sector_addr = self.sblock.offset(new_clusters[0]);
+            self.clusters.append(&mut new_clusters);
         }
+
+        let clusters = alloc_clusters(BLOCK_SIZE);
 
         get_block_cache(sector_addr, &self.device).lock().modify(0, |inode: &mut INode| {
             inode.i_type = inode_type;
