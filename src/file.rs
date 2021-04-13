@@ -84,7 +84,7 @@ impl FileEntry {
         Ok(if len < size { len } else { size })
     }
 
-    pub fn read(&self, buf: &mut [u8]) -> Result<usize, FileError> {
+    pub fn read(&mut self, buf: &mut [u8]) -> Result<usize, FileError> {
         let mut idx = 0;
         let mut len = 0;
         let size = self.size;
@@ -102,7 +102,9 @@ impl FileEntry {
             end == buf_len || end == size - seek_at
         });
 
-        Ok(if len < size { len } else { size })
+        let ret = if len < size { len } else { size };
+        self.seek_at = ret;
+        Ok(ret)
     }
 
     pub fn write(&mut self, buf: &[u8], write_type: WriteType) -> Result<(), FileError> {
